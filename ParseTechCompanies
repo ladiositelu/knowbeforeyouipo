@@ -36,17 +36,15 @@ print data.shape
 
 def download(data,path):
     '''
-        This function takes an SEC file path, downloads the content of the url
+        This function takes an SEC file path and then downloads the content of the url
         '''
-    #docs=[]
     base_url='https://www.sec.gov/Archives/'
-    data_dict={}
+    data_dict={} # dictionary that holds the name of company as key
     for index, row in data.iterrows():
         url=base_url+row['path']
         get_page=requests.get(url).content
-        get_page=get_page.lower()#.replace('\n','')
+        get_page=get_page.lower()
         data_dict[row['conm']]=get_page
-        #docs.append(data_dict)
         print str(index) + " has been downloaded and stored"
     return data_dict
 
