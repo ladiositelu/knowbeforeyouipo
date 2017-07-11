@@ -9,14 +9,7 @@ from bs4 import BeautifulSoup
 import requests
 
 
-from nltk.tokenize import RegexpTokenizer
-from nltk.tokenize import TreebankWordTokenizer
-from nltk.corpus import stopwords
-from stop_words import get_stop_words
-from nltk.stem.snowball import SnowballStemmer
-from gensim import corpora, models
-import gensim
-import nltk
+
 import pickle
 import sys
 reload(sys)
@@ -30,9 +23,8 @@ from HTMLParser import HTMLParseError
 
 
 
-#Load the dataset containing all the paths to individual companies
-#data=pd.read_csv('/Users/oladipoositelu/S1_tech_companies.csv') # File containing paths to S1
-data=pd.read_csv('/Users/oladipoositelu/S1_tech_companies.csv')
+###Load the dataset containing all the paths to individual companies
+data=pd.read_csv('/.../S1_tech_companies.csv')
 data['date']=pd.to_datetime(data['date'])
 data['year']=data['date'].dt.year # create a year variable
 data['conm']=data.conm.str.lower()
