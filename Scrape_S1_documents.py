@@ -16,7 +16,7 @@ urls.sort()
 
 
 #Creating and connecting to sqlite database file
-con = sqlite3.connect('/Users/oladipoositelu/Desktop/KBYIPO/databases/edgar_idx.db')
+con = sqlite3.connect('/.../edgar_idx.db')
 cur = con.cursor()
 
 print "connected to sqlite database"
