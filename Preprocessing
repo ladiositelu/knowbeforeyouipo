@@ -1,0 +1,241 @@
+## Import all the required libraries
+import pandas as pd
+import numpy as np
+
+## Parsing Libraries
+from bs4 import BeautifulSoup
+import requests
+
+##NLP Libraries
+from nltk.tokenize import RegexpTokenizer
+from nltk.tokenize import TreebankWordTokenizer
+from nltk.corpus import stopwords
+from stop_words import get_stop_words
+from nltk.stem.snowball import SnowballStemmer
+from gensim import corpora, models, similarities
+import gensim
+import nltk
+from collections import defaultdict
+from nltk import word_tokenize
+
+import pickle
+import string
+import re
+from unidecode import unidecode
+
+
+## Function to load documents
+def load_document(path):
+    ''' Function that loads data from pickle.
+        path is the location of the document'''
+    with open(path,'rb') as fp:
+        return pickle.load(fp)
+
+def remove_HTML_tags(doc_type,numbers):
+    ''' Function that converts each document in the documents list into text
+        by stripping its html tags using beautifulsoups get_text method
+        doc_type = 'BUSINESS' or 'RISK' refers to if the document is the business section or risk section
+        numbers refers to the number of documents we want to retrieve'''
+    techs={}
+    count=0
+    for index in range(0,numbers):
+        path='.../'+str(doc_type)+'/'+str(index)+str(doc_type)+'.txt'
+        try:
+            document=load_document(path)
+            for key, company in document.iteritems():
+                try:
+                    soup=BeautifulSoup(company,'html.parser')
+                    clean_text=soup.get_text()
+                    techs[key]=clean_text
+                    print str(count) + " " + str(key) + " cleaned and added to dictionary"
+                    count +=1
+                except HTMLParseError:
+                    print str(key) + " NOT SOUPED"
+        except:
+            pass
+    return techs
+
+business_texts =remove_HTML_tags('BUSINESS',9312)
+risk_texts=remove_HTML_tags('RISK',9312)
+
+## Remove common stop words and tokenize
+tokenizer= TreebankWordTokenizer()
+
+punc=set('''`~!@#$%^&*()-_=+\|]}[{;:'",<.>/?''')# define punctuation to remove
+stop_words = set(stopwords.words('english'))
+
+stoplist = 'http://www3.nd.edu/~mcdonald/Data/ND_Stop_Words_Generic.txt'
+stoplist = requests.get(stoplist).content
+
+soup_SL=BeautifulSoup(stoplist,'html.parser')
+SL=soup_SL.get_text()
+
+nltk_stpwd = stopwords.words('english')
+stop_words_stpwd = get_stop_words('en')
+
+
+other_SW=["***","\u200b","\x95","[***]","\x97","\u200b","\xa8","[**]","\x9f","considered",'size=2',"''",]
+letters=["a","b","c","d","e","f","g","h","i","j","k","l","m","n",
+         "o","p","q","r","s","t","u","v","w","x","y","z"]
+
+merged_stopwords = list(set(nltk_stpwd + stop_words_stpwd+tokenizer.tokenize(SL.lower())+ other_SW+ letters ))
+
+def unstem(original_text, stemmer):
+    '''Function to unstem words'''
+    counts = defaultdict(lambda : defaultdict(int))
+    surface_forms = {}
+    #
+    for document in original_text:
+        for token in document:
+            stemmed = stemmer.stem(token)
+            counts[stemmed][token] += 1
+                #
+    for stemmed, originals in counts.iteritems():
+        surface_forms[stemmed] = max(originals,key=lambda i: originals[i])
+#
+    return surface_forms
+
+
+# Instantiate a Snowball stemmer
+stemmer= SnowballStemmer('english')
+
+## Dimensionality Reduction
+def tokenize_stem_remove_stops(documents, stopwords):
+    '''Function tokenizes each document, removes stop words and stems the tokens. It also saves unstemmed tokens'''
+    docs={}
+    original_docs={}
+    for key, document in documents.iteritems():
+        for word in tokenizer.tokenize(unidecode(document.lower())):
+            if (word not in stopwords) and (word not in punc) and (not word.isdigit()):
+                if key in docs:
+                    docs[key].append(stemmer.stem(word))
+                    original_docs[key].append(word)
+                else:
+                    docs[key] = [stemmer.stem(word)]
+                    original_docs[key]=[word]
+    return docs, original_docs
+
+stemmed_risk_texts, original_risk_texts=tokenize_stem_remove_stops(risk_texts,merged_stopwords)
+print "stemmed risk done"
+stemmed_business_texts, original_business_texts=tokenize_stem_remove_stops(business_texts, merged_stopwords)
+print "stemmed business done"
+## Create Dictionary
+S_business_texts=[[str(word).translate(None, string.punctuation) for word in text] for text in stemmed_business_texts.values()]
+O_business_texts=[[str(word).translate(None, string.punctuation) for word in text] for text in original_business_texts.values()]
+
+S_risk_texts=[[str(word).translate(None, string.punctuation) for word in text] for text in stemmed_risk_texts.values()]
+O_risk_texts=[[str(word).translate(None, string.punctuation) for word in text] for text in original_risk_texts.values()]
+
+risk_dictionary = corpora.Dictionary(S_risk_texts) # Create a risk dictionary. .values()
+business_dictionary = corpora.Dictionary(S_business_texts) # Create a business dictionary
+
+counts_risk = unstem(O_risk_texts, stemmer)
+counts_business = unstem(O_business_texts, stemmer)
+
+with open('/.../counts_risk.txt','wb') as f:
+    pickle.dump(counts_risk, f)
+
+with open('/.../counts_business.txt','wb') as f:
+    pickle.dump(counts_business, f)
+
+print str(len(risk_dictionary.token2id)) + " unique tokens in risk dictionary"
+
+print str(len(business_dictionary.token2id)) + " unique tokens in business dictionary"
+
+risk_dictionary.save('/...risk_dictionary.dict')
+print "risk_dictionary has been saved"
+
+business_dictionary.save('/.../business_dictionary.dict')
+print "business_dictionary has been saved"
+
+
+risk_corpus = [risk_dictionary.doc2bow(text) for text in stemmed_risk_texts.values()] # BUILD CORPUS USING BoW
+business_corpus = [business_dictionary.doc2bow(text) for text in stemmed_business_texts.values()] # BUILD CORPUS USING BoW
+
+corpora.MmCorpus.serialize('/.../risk_corpus.mm', risk_corpus)
+print "risk_corpus has been saved"
+    
+
+corpora.MmCorpus.serialize('/.../business_corpus.mm', business_corpus)
+print "risk_corpus has been saved"
+   
+
+
+with open('/.../company.txt', 'wb') as ff:
+    pickle.dump(business_texts.keys(), ff)
+
+
+
+co_list=stemmed_business_texts.keys()
+co_number=range(len(co_list))
+co_dict=dict(zip(co_list, co_number))
+
+r_co_list=stemmed_risk_texts.keys()
+r_co_number=range(len(r_co_list))
+r_co_dict=dict(zip(r_co_list, r_co_number))
+
+with open('/.../r_co_list.txt', 'wb') as ff:
+    pickle.dump(r_co_list, ff)
+
+##### TRANSFORMATIONS
+business_tfidf = models.TfidfModel(business_corpus) # -- initialize tf-idf model for business corpus
+corpora.MmCorpus.serialize('/.../corpus_business_tfidf.mm',business_tfidf[business_corpus])
+print "corpus_business_tfidf serialized"
+
+risk_tfidf = models.TfidfModel(risk_corpus) # -- initialize tf-idf model for risk corpus
+corpora.MmCorpus.serialize('/.../corpus_risk_tfidf.mm',risk_tfidf[risk_corpus])
+print "corpus_risk_tfidf serialized"
+
+###COMPUTE TFIDF FOR THE ENTIRE CORPUS and save
+
+risk_keywords=[]
+for vec in risk_tfidf[risk_corpus]:
+    ekeywords=[]
+    for idx,value in vec:
+        ekeywords.append((counts_risk[risk_dictionary[idx]],value))
+    risk_keywords.append(ekeywords)
+
+with open('/.../risk_keywords.txt', 'wb') as ff:
+    pickle.dump(risk_keywords, ff)
+
+print "risk keywords saved"
+
+business_keywords=[]
+for vec in business_tfidf[business_corpus]:
+    ekeywords=[]
+    for idx,value in vec:
+        ekeywords.append((counts_business[business_dictionary[idx]],value))
+    business_keywords.append(ekeywords)
+
+with open('/.../business_keywords.txt', 'wb') as ff:
+    pickle.dump(business_keywords, ff)
+
+print "business keywords saved"
+
+
+##### DIMENSIONALITY REDUCTION
+lsi_business = models.lsimodel.LsiModel(business_tfidf[business_corpus], id2word=business_dictionary, num_topics=2)
+
+lsi_risk = models.lsimodel.LsiModel(risk_tfidf[risk_corpus], id2word=risk_dictionary, num_topics=2)
+
+
+def get_TFIDF(company):
+       ## This function gets tfidf scores and features. The output is a dataframe that goes into the print_TFIDF function'''
+    b_keywords = [(counts_business[business_dictionary[idx]],value) for idx,value in sorted(business_tfidf[business_corpus[co_dict[company]]],key= lambda x: x[1], reverse = True)][:20]
+           #print b_keywords
+    b_feature=[]
+    b_TFIDF_score=[]
+    for key_tuple in b_keywords:
+        b_feature.append(key_tuple[0]), b_TFIDF_score.append(key_tuple[1])
+        df=pd.DataFrame(b_feature[0:10],columns=['key'])
+        df['score']=b_TFIDF_score[0:10]
+    r_keywords = [(counts_risk[risk_dictionary[idx]],value) for idx,value in sorted(risk_tfidf[risk_corpus[r_co_dict[company]]],key = lambda x: x[1], reverse = True)][:20]
+    r_feature=[]
+    r_TFIDF_score=[]
+    for key_tuple in r_keywords:
+        r_feature.append(key_tuple[0]), r_TFIDF_score.append(key_tuple[1])
+        df1=pd.DataFrame(r_feature[0:10],columns=['key'])
+        df1['score']=r_TFIDF_score[0:10]
+    return df,df1
+
+
