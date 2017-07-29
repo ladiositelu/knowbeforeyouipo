@@ -1,0 +1,131 @@
+## Import all the required libraries
+
+import pandas as pd
+import datetime
+
+
+from bs4 import BeautifulSoup
+import requests
+
+import pickle
+import sys
+reload(sys)
+sys.setdefaultencoding('utf-8')
+
+#import string
+import re
+from HTMLParser import HTMLParseError
+
+
+
+
+
+#Load the dataset containing all the paths to individual companies
+data=pd.read_csv('.../Annual_n_S1.csv')
+data['date']=pd.to_datetime(data['date']) # convert date to datetime variable
+data['year']=data['date'].dt.year # create a year variable
+data['conm']=data.conm.str.lower() #convert company name variable to lower case for ease
+df=data[data['type']=='S-1'] # select only S-1 reports
+
+## Handling duplicates
+df.drop_duplicates(['cik'],inplace=True) # drop duplicates if multiple entries have the same Central Index Key (cik) number
+df['specific_path']=[row[3] for row in df['path'].str.split('/')] # This splits the path column
+df.drop_duplicates(['specific_path'],inplace=True)
+df.reset_index(inplace=True)
+print df.shape
+
+
+
+def link_search(page,pattern='<b><a '):
+    ''' This Function looks for certain patterns that depict a link/seaction header in an S-1
+        '''
+    indices = []
+    idx = 0
+    while True:
+        idx = page.find(pattern,idx+1)
+        if idx==-1:
+            break
+        indices.append(idx)
+    return indices
+
+def link_search_wrapper(page):
+    '''A wrapper around the link_search function'''
+    candidate_patterns = ['<b><a ',' link1 ','<b>\n<a ','size=2><b> ', '<p class="eolCenter" ','<br></font><font size=2><b>' ]
+    for pattern in candidate_patterns:
+        indices = link_search(page, pattern)
+        if len(indices)>0:
+            return indices
+    return []
+
+### Write functions that look for Risk factors and business sections
+def risk(page, indices):
+    ''' This function grabs the sections labeled RISK FACTORS
+        '''
+    pattern=re.compile(" *[Rr]isk *[Ff]actors *")
+    for i in range(len(indices)-1):
+        newpage=(page[indices[i]:indices[i]+52])
+        for j in re.finditer(pattern,newpage):
+            return i
+
+def business(page, indices):
+    ''' This function grabs the sections labeled Business
+        '''
+    pattern=re.compile(" *[Bb]usiness *")
+    for i in range(len(indices)-1):
+        newpage=(page[indices[i]:indices[i]+52])
+        for j in re.finditer(pattern,newpage):
+            return i
+
+
+
+def download(data,path):
+    '''
+        This function takes an SEC file path, downloads the content of the url
+        '''
+    risk_count=0
+    biz_count=0
+    R_FAIL=[] # use this to collect the company name of a report that FAILED the PARSE process
+    b_FAIL=[]
+    base_url='https://www.sec.gov/Archives/'
+    for index, row in data.iterrows():
+        data_dict={} # the key to this dict is the name of the company and the value is the content of the company document
+        url=base_url+row['path'] # check the url for every observation
+        get_page=requests.get(url).content #use requests library to get the content
+        get_page=get_page.lower() # lower case all the strings in doc
+        data_dict[row['conm']]=get_page
+        for key, company in data_dict.iteritems():
+            try:
+                risk_factors={}
+                business_description={}
+                the_indices=link_search_wrapper(company)
+                RISK =risk(company, the_indices)
+                RF=company[the_indices[RISK]: the_indices[RISK +1 ]]
+                risk_factors[key]=RF
+                biz =business(company, the_indices)
+                BZ=company[the_indices[biz]: the_indices[biz +1 ]]
+                business_description[key]=BZ
+                with open('.../'+str(risk_count)+'RISK.txt', 'wb') as FP:
+                    pickle.dump(risk_factors, FP)
+                with open('.../'+str(biz_count)+'BUSINESS.txt', 'wb') as FP:
+                    pickle.dump(business_description, FP)
+                print str(risk_count) + '  RISK has been downloaded and stored'
+                print str(biz_count) + '  BUSINESS has been downloaded and stored'
+            except TypeError:
+                R_FAIL.append(key)
+                b_FAIL.append(key)
+                print str(key) + '  RISK NOT downloaded '
+                print str(key) + '  BUSINESS NOT downloaded '
+        risk_count+=1
+        biz_count+=1
+    return R_FAIL
+
+
+
+
+S1_reports=download(df, 'path')
+
+
+
+
+
+
