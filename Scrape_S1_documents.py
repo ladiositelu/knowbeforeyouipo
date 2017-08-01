@@ -1,6 +1,4 @@
 ## Import libraries
-import pandas as pd
-import datetime
 import sqlite3
 from sqlalchemy import create_engine
 
